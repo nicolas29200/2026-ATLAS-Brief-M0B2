@@ -6,8 +6,12 @@ Vous devez completer les routes ci-dessous en vous appuyant sur :
 - Le contrat d'interface : backend.schemas (Pydantic v2)
 """
 
+import os
+import tempfile
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, status
+from pathlib import Path
+
+from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from iatos_core import __version__
@@ -15,6 +19,7 @@ from iatos_core.logger import logger
 from iatos_core.ml.scoring import CreditScoringPredictor
 from iatos_core.ml.sentiment import SentimentAnalyzer
 from iatos_core.agent.graph import run_agent_message
+from iatos_core.ml.whisper import WhisperProcessing
 
 from backend.schemas import (
     ChatRequest,
@@ -24,25 +29,28 @@ from backend.schemas import (
     HealthResponse,
     SentimentPredictRequest,
     SentimentPredictResponse,
+    AudioTranscribeResponse
 )
 
 # Services partages (Singletons en memoire)
 scoring_predictor: CreditScoringPredictor = None
 sentiment_analyzer: SentimentAnalyzer = None
+whisper_processor: WhisperProcessing = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Cycle de vie de l'application FastAPI.
     """
-    global scoring_predictor, sentiment_analyzer
+    global scoring_predictor, sentiment_analyzer,whisper_processor
     
     
     logger.info("Demarrage des services FastAPI IA-TOS...")
     
     scoring_predictor = CreditScoringPredictor()
     sentiment_analyzer = SentimentAnalyzer()
-    logger.success("Initialisation avec succes de scoring_predictor et de sentiment_analyzer.")
+    whisper_processor = WhisperProcessing()
+    logger.success("Initialisation avec succes de scoring_predictor, de sentiment_analyzer et de whisper_processor.")
 
     yield
     logger.info("Arret des services FastAPI IA-TOS.")
@@ -64,7 +72,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.get("/health", response_model=HealthResponse, tags=["Supervision"])
 def health_check():
@@ -151,3 +158,40 @@ def predict_sentiment(payload: SentimentPredictRequest):
             detail="Erreur interne lors de l'analyse de sentiment."
         )
 
+
+@app.post("/audio/transcribe", response_model=AudioTranscribeResponse, tags=["Traitement Audio"])
+async def transcribe_audio(file: UploadFile = File(...)):
+    """Endpoint de transcription audio (a chaud) avec whisper-tiny.
+
+    Recoit un fichier audio binaire (WAV) via multipart/form-data.
+    """
+    global whisper_processor
+    if whisper_processor is None:
+        whisper_processor = WhisperProcessing()
+
+    audio_bytes = await file.read()
+    tmp_path = None
+    try:
+        # Persistance temporaire sur disque car le pipeline ASR attend un chemin de fichier reel
+        tmp_dir = Path(__file__).resolve().parent.parent / "data" / "tmp_audio_files"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=tmp_dir, suffix=".wav", delete=False) as tmp_file:
+            tmp_file.write(audio_bytes)
+            tmp_path = tmp_file.name
+
+        result = whisper_processor.transcription(tmp_path)
+        return AudioTranscribeResponse(
+            filename=file.filename,
+            transcription=result.get("text"),
+            language=result.get("language"),
+            execution_time_seconds=result.get("execution_time_seconds")
+        )
+    except Exception as e:
+        logger.error(f"Erreur lors de la transcription audio : {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne lors de la transcription audio."
+        )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)

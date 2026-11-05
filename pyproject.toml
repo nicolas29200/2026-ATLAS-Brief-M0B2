@@ -25,6 +25,8 @@ dependencies = [
     "langchain-core>=0.2.0",
     "langchain-ollama>=0.1.0",
     "requests>=2.31.0",
+    "transformers[torch]>=5.22.1",
+    "soundfile>=0.14.0",
 ]
 
 [project.optional-dependencies]

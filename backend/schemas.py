@@ -49,6 +49,12 @@ class SentimentPredictResponse(BaseModel):
     scores: Dict[str, float]
     type_modele: str
 
+# Schemas pour la dictée vocale
+class AudioTranscribeResponse(BaseModel):
+    filename: str
+    transcription: str
+    language: str
+    execution_time_seconds: float
 
 # Schema de statut de service
 class HealthResponse(BaseModel):
