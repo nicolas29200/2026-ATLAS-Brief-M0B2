@@ -3,7 +3,6 @@ from typing import Any, Dict
 
 import numpy as np
 import soundfile as sf
-from scipy.signal import resample_poly
 from transformers import pipeline
 
 from iatos_core.logger import logger
@@ -30,11 +29,6 @@ class WhisperProcessing:
         # Decodage manuel (soundfile/libsndfile) pour eviter la dependance a ffmpeg
         audio_array, sampling_rate = sf.read(audio_file, dtype="float32", always_2d=True)
         audio_array = audio_array.mean(axis=1).astype(np.float32)  # downmix vers mono
-
-        target_rate = self.asr.feature_extractor.sampling_rate
-        if sampling_rate != target_rate:
-            audio_array = resample_poly(audio_array, target_rate, sampling_rate).astype(np.float32)
-            sampling_rate = target_rate
 
         result = self.asr({"raw": audio_array, "sampling_rate": sampling_rate}, return_language=True)
 

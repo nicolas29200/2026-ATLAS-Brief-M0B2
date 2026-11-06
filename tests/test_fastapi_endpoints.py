@@ -1,5 +1,6 @@
 """Tests d'integration pour les routes FastAPI."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -19,7 +20,7 @@ def test_endpoint_predict_credit_success(client):
         "revenu_mensuel": 3500.0,
     }
     response = client.post("/predict/credit", json=payload)
-    assert response.status_code == 200
+    assert response.status_code == 200 
     data = response.json()
     assert "score" in data
     assert 300.0 <= data["score"] <= 850.0
@@ -65,3 +66,22 @@ def test_endpoint_chat_with_mocked_agent(client):
         assert data["success"] is True
         assert data["tool_called"] is True
         assert "20" in data["response"]
+
+
+def test_endpoint_audio_transcribe_missing_file(client):
+    # Aucun fichier envoye : erreur de validation FastAPI avant d'atteindre la logique metier
+    response = client.post("/audio/transcribe")
+    assert response.status_code == 422
+
+def test_endpoint_audio_transcribe_success(client):
+    # fichier audio pour test
+    audio_path = Path(__file__).resolve().parent.parent / "data" / "test_audio" / "test_enregistreur_vocal.wav"
+    audio_bytes = audio_path.read_bytes()
+    files = {"file": (audio_path.name, audio_bytes, "audio/wav")}
+    response = client.post("/audio/transcribe", files=files)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["filename"] == "test_enregistreur_vocal.wav"
+    assert data["transcription"] == "Test enregistreur vocale."
+    assert data["language"] == "french"
+    assert data["execution_time_seconds"] < 5.0  # par exemple, moins de 5 secondes

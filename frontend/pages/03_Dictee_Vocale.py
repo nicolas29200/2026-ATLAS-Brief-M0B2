@@ -21,12 +21,11 @@ Cette page permet de dicter du texte à l'aide du micro et utilise le modèle **
 """)
 
 audio_enregistre = st.audio_input(
-    "Enregistrez votre dictée vocale ici :"
+    "Enregistrez votre dictée vocale ici :",sample_rate=16000
 )
 
 if audio_enregistre is not None:
     st.audio(audio_enregistre)
-    st.write(audio_enregistre.name)
     st.success("Audio enregistré avec succès.")
     try:
         with st.spinner("Transcription en cours..."):
@@ -50,4 +49,3 @@ if audio_enregistre is not None:
 
     except Exception as e:
         st.error(f"Erreur lors de l'appel à l'API : {e}")
-
